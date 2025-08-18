@@ -1,0 +1,126 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const axios_1 = __importDefault(require("axios"));
+const config_1 = __importDefault(require("../../../config/config"));
+const request_1 = __importDefault(require("request"));
+const rootModel_1 = __importDefault(require("../../../models/rootModel"));
+const flightConstants_1 = require("../../miscellaneous/flightMiscellaneous/flightConstants");
+const constants_1 = require("../../miscellaneous/constants");
+const BASE_URL = config_1.default.TRAVELPORT_REST_URL;
+class TravelportRestRequest {
+    // get request (axios)
+    getRequest(endpoint) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const authModel = new rootModel_1.default().commonModel();
+                const token = yield authModel.getEnv(flightConstants_1.TRAVELPORT_REST_TOKEN_ENV);
+                const headers = {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    XAUTH_TRAVELPORT_ACCESSGROUP: config_1.default.TRAVELPORT_REST_ACCESS_GROUP,
+                };
+                const apiUrl = BASE_URL + endpoint;
+                const response = yield axios_1.default.get(apiUrl, { headers });
+                const data = response.data;
+                return { code: response.status, data };
+            }
+            catch (error) {
+                console.error('Error calling API:', error.response.status);
+                return { code: error.response.status, data: [] };
+            }
+        });
+    }
+    // post request (axios)
+    postRequest(endpoint, requestData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const apiUrl = BASE_URL + endpoint;
+                const authModel = new rootModel_1.default().commonModel();
+                const token = yield authModel.getEnv(flightConstants_1.TRAVELPORT_REST_TOKEN_ENV);
+                const headers = {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    XAUTH_TRAVELPORT_ACCESSGROUP: config_1.default.TRAVELPORT_REST_ACCESS_GROUP,
+                };
+                //   const response = await axios.post(apiUrl, requestData, { headers });
+                const response = yield axios_1.default.request({
+                    method: 'post',
+                    url: apiUrl,
+                    headers,
+                    data: requestData,
+                    validateStatus: () => true
+                });
+                if (response.status !== 200) {
+                    yield new rootModel_1.default().errorLogsModel().insert({
+                        level: constants_1.ERROR_LEVEL_WARNING,
+                        message: `Error from Travelport`,
+                        url: apiUrl,
+                        http_method: 'POST',
+                        metadata: {
+                            api: flightConstants_1.TRAVELPORT_REST_API,
+                            endpoint: apiUrl,
+                            payload: requestData,
+                            response: response.data,
+                        }
+                    });
+                    return false;
+                }
+                return response.data;
+            }
+            catch (error) {
+                console.log(error.response);
+                return false;
+            }
+        });
+    }
+    //REQUEST
+    nodeJSRequestModule(endpoint, requestData, method) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const authModel = new rootModel_1.default().commonModel();
+            const token = yield authModel.getEnv(flightConstants_1.TRAVELPORT_REST_TOKEN_ENV);
+            const apiUrl = BASE_URL + endpoint;
+            var options = {
+                method: method,
+                url: apiUrl,
+                headers: {
+                    XAUTH_TRAVELPORT_ACCESSGROUP: config_1.default.TRAVELPORT_REST_ACCESS_GROUP,
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(requestData),
+            };
+            return new Promise((resolve, reject) => {
+                (0, request_1.default)(options, (error, response, body) => {
+                    if (error) {
+                        reject(false);
+                    }
+                    else {
+                        try {
+                            const jsonResponse = JSON.parse(body);
+                            resolve(jsonResponse);
+                        }
+                        catch (parseError) {
+                            console.error('JSON Parsing Error:', parseError);
+                            resolve(false);
+                        }
+                    }
+                });
+            });
+        });
+    }
+}
+exports.default = TravelportRestRequest;

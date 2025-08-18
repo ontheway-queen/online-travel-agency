@@ -1,0 +1,151 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SupportTicketModel = void 0;
+const constants_1 = require("../../utils/miscellaneous/constants");
+const schema_1 = __importDefault(require("../../utils/miscellaneous/schema"));
+class SupportTicketModel extends schema_1.default {
+    constructor(db) {
+        super();
+        this.db = db;
+    }
+    insertSupport(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.db("support_ticket")
+                .withSchema(this.AGENT_SCHEMA)
+                .insert(payload, "id");
+        });
+    }
+    // insert support message
+    insertSupportMessage(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.db("support_ticket_message")
+                .withSchema(this.AGENT_SCHEMA)
+                .insert(payload);
+        });
+    }
+    //update support
+    updateSupport(payload, id) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.db("support_ticket")
+                .withSchema(this.AGENT_SCHEMA)
+                .update(payload)
+                .where({ id });
+        });
+    }
+    //get list
+    getList(agency_id, status, limit, skip) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const data = yield this.db("support_ticket as bs")
+                .withSchema(this.AGENT_SCHEMA)
+                .select("bs.id", "bs.booking_id", "fb.pnr_code", "bs.support_type", "bs.status", "bs.created_at", "bu.name as created_by", "ua.first_name as closed_by", this.db.raw(`string_agg(bst.ticket_number, ', ') as ticket_numbers`))
+                .leftJoin("btob_user as bu", "bu.id", "bs.created_by")
+                .leftJoin("flight_booking as fb", "fb.id", "bs.booking_id")
+                .joinRaw("left join admin.user_admin as ua on ua.id = bs.closed_by")
+                .leftJoin("booking_support_tickets as bst", "bs.id", "bst.support_id")
+                .groupBy("bs.id", "bs.booking_id", "fb.pnr_code", "bs.support_type", "bs.status", "bs.created_at", "bu.name", "bs.closed_by", "ua.first_name")
+                .where((qb) => {
+                if (agency_id) {
+                    qb.andWhere("bs.agency_id", agency_id);
+                }
+                if (status) {
+                    qb.andWhere("bs.status", status);
+                }
+            })
+                .limit(limit || 100)
+                .offset(skip || 0)
+                .orderBy("bs.created_at", "desc");
+            const total = yield this.db("booking_support as bs")
+                .withSchema(this.AGENT_SCHEMA)
+                .count("* as total")
+                .leftJoin("btob_user as bu", "bu.id", "bs.created_by")
+                .leftJoin("flight_booking as fb", "fb.id", "bs.booking_id")
+                .joinRaw("left join admin.user_admin as ua on ua.id = bs.closed_by")
+                .leftJoin("booking_support_tickets as bst", "bs.id", "bst.support_id")
+                .groupBy("bs.id", "bs.booking_id", "fb.pnr_code", "bs.support_type", "bs.status", "bs.created_at", "bu.name", "bs.closed_by", "ua.first_name")
+                .where((qb) => {
+                if (agency_id) {
+                    qb.andWhere("bs.agency_id", agency_id);
+                }
+                if (status) {
+                    qb.andWhere("bs.status", status);
+                }
+            });
+            return { data, total: (_a = total[0]) === null || _a === void 0 ? void 0 : _a.total };
+        });
+    }
+    //get single support
+    getSingleSupport(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const data = yield this.db("booking_support as bs")
+                .withSchema(this.AGENT_SCHEMA)
+                .select("bs.id", "bs.booking_id", "fb.pnr_code", "bs.support_type", "bs.status", "bs.created_at", "ai.agency_name as created_by", "ai.email as created_by_email", "ua.first_name as closed_by", "bs.refund_amount", "bs.adjust_at", "bs.adjusted_by", "bs.agency_id")
+                .leftJoin("agency_info as ai", "ai.id", "bs.agency_id")
+                .leftJoin("flight_booking as fb", "fb.id", "bs.booking_id")
+                .joinRaw("left join admin.user_admin as ua on ua.id = bs.closed_by")
+                .where("bs.id", payload.id)
+                .andWhere((qb) => {
+                if (payload.agency_id) {
+                    qb.andWhere("bs.agency_id", payload.agency_id);
+                }
+                if (payload.notStatus) {
+                    qb.andWhereNot("bs.status", payload.notStatus);
+                }
+            });
+            const username = yield this.db("user_admin")
+                .withSchema(this.ADMIN_SCHEMA)
+                .select("first_name as adjusted_by")
+                .where("id", (_a = data[0]) === null || _a === void 0 ? void 0 : _a.adjusted_by);
+            // console.log('username', username);
+            // console.log();
+            return [data[0], username[0]];
+        });
+    }
+    //get messages
+    getMessages(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const data = yield this.db("booking_support_messages as bsm")
+                .withSchema(this.AGENT_SCHEMA)
+                .select("id", "message", "attachment", "sender", "created_at")
+                .where("support_id", payload.support_id)
+                .limit(payload.limit || 100)
+                .offset(payload.skip || 0)
+                .orderBy("id", "desc");
+            const total = yield this.db("booking_support_messages as bsm")
+                .withSchema(this.AGENT_SCHEMA)
+                .count("id as total")
+                .where("support_id", payload.support_id);
+            return { data, total: (_a = total[0]) === null || _a === void 0 ? void 0 : _a.total };
+        });
+    }
+    //total support count
+    totalSupportCount() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const data = yield this.db("booking_support")
+                .withSchema(this.AGENT_SCHEMA)
+                .whereRaw("DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)")
+                .select(this.db.raw(`COUNT(*) FILTER (WHERE status = '${constants_1.booking_support_status.pending}') as pending,
+          COUNT(*) FILTER (WHERE status = '${constants_1.booking_support_status.processing}') as processing,
+          COUNT(*) FILTER (WHERE status = '${constants_1.booking_support_status.adjusted}') as adjusted,
+          COUNT(*) FILTER (WHERE status = '${constants_1.booking_support_status.closed}') as closed,
+          COUNT(*) FILTER (WHERE status = '${constants_1.booking_support_status.rejected}') as rejected`))
+                .first();
+            return data;
+        });
+    }
+}
+exports.SupportTicketModel = SupportTicketModel;
